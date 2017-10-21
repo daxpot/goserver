@@ -26,14 +26,14 @@ func New(size int) *pool {
 	}
 
 	for i := 0; i<size; i++ {
-		go func(p *pool) {
+		go func(p *pool, i int) {
 			for {
 				t := <- p.workers
-				t.Fn(t.Param)
+				t.Fn(t.Param, i)
 				t.Completed = true
 				<- p.queue
 			}
-		}(p)
+		}(p, i)
 	}
 	return p
 }
