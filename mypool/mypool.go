@@ -39,11 +39,8 @@ func New(size int) *pool {
 }
 
 func (p *pool) Add(fn func(...interface{}), param ...interface{}) {
-	// println("add start", param)
 	p.queue <- 1
-	// work := &Work{fn, false}
 	p.workers <- &Work{fn, param, false}
-	// println("add done", param)
 }
 
 func (p *pool) Wait() {
