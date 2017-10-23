@@ -4,7 +4,13 @@ import (
 	"fmt"
 	"runtime"
 	"time"
+	"os"
+	"os/signal"
 	"./mypool"
+)
+
+var (
+	killed = false
 )
 
 func test(args ...interface{}) {
@@ -16,9 +22,18 @@ func test(args ...interface{}) {
 	fmt.Println("runtime num:", runtime.NumGoroutine(), idx, t, i)
 }
 
+func signalListen(pool *mypool.Pool) {
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs)
+	sig := <-sigs
+	fmt.Println("Got signal:", sig, pool.Length())
+	killed = true
+}
+
 func main() {
 	pool := mypool.New(3)
-	for i := 0; i<10; i++ {
+	go signalListen(pool)		//安全退出
+	for i := 0; i<10 && !killed; i++ {
 		pool.Add(test, i, "test")
 	}
 	pool.Wait()
