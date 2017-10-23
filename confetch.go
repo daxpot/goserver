@@ -3,7 +3,6 @@ package main
 import (
 	"menteslibres.net/gosexy/redis"
 	"github.com/VividCortex/godaemon"
-	"./gpool"
 	"runtime"
 	"sync"
 	"net"
@@ -11,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"./mypool"
 	"time"
 	"strconv"
 )
@@ -21,6 +22,7 @@ var (
 	httpClient http.Client
 	logFile *os.File
 	m *sync.Mutex
+	killed = false
 )
 
 func init() {
@@ -50,6 +52,14 @@ func init() {
 	m = new(sync.Mutex)
 }
 
+func signalListen(pool *mypool.Pool) {
+	sigs := make(chan os.Signal)
+	signal.Notify(sigs)
+	sig := <-sigs
+	fmt.Println("Got signal:", sig, pool.Length())
+	killed = true
+}
+
 func main() {
 	if len(os.Args) > 1 {
         command := os.Args[1]
@@ -70,21 +80,18 @@ func main() {
     	}
     }
     fmt.Println(rcount)
-    pool := gpool.New(rcount)
+    pool := mypool.New(rcount)
+	go signalListen(pool)		//安全退出
     idx := 0
-	for {
+	for ;!killed; {
 
 		ret1, ret2 := rdb.BRPop(3600, "downlist")
 		if ret2 == nil {
 			url := ret1[1]
-			pool.Add(1)
 			i, _ := rdb.Incr("filename")
 			key :=  fmt.Sprintf("files/%d.jpg", i)
-			go func(url, key string) {
-				fmt.Println("runtime num:", runtime.NumGoroutine())
-				download(url, key)
-				pool.Done()
-			}(url, key)
+			
+			pool.Add(download, url, key)
 			if idx % 10000 == 0 {		//下载一万个文件后打一个标记
 				log(strconv.Itoa(runtime.NumGoroutine()))
 				log(url)
@@ -92,9 +99,14 @@ func main() {
 			idx += 1
 		}
 	}
+	pool.Wait()
 }
 
-func download(url, key string) {
+func download(args ...interface{}) {
+	param := args[0].([]interface{})
+	url := param[0].(string)
+	key := param[1].(string)
+
 	var (
 		f *os.File
 	)
